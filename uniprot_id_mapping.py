@@ -315,7 +315,6 @@ def search_accession_alf_50(family):
 def retrieve_alf(family):
     all_accession_alf = []
     no_alf_acs = []
-    directory = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/list_accession_cluster50'
     directory = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/list_accession_clt50'#
 
     if not os.path.exists(directory):
@@ -341,7 +340,7 @@ def retrieve_alf(family):
             if accession_alf_list:
                 premier_element = accession_alf_list[0]
             else:
-                print("La liste est vide !")
+                print("Aucune accession ayant un modèle a été trouvé dans cette liste !")
                 premier_element = None
                 no_alf_acs.append(name[0:10])
             if premier_element != None:
@@ -357,8 +356,7 @@ def download_models(family):
     """function to retrieve alphafold modeles pdb files of a list of accession"""
     global output_folder
     output_folder = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/modeles_alf_clt'
-    #/home/guest/Documents/Cornelia/cds_project/GH62/clean_info_GH62
-    #output_folder = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/modeles_alph'
+
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     # accession_search = retrieve_alf(family)

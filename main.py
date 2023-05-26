@@ -14,7 +14,7 @@ import uniprot_id_mapping as map
 import alphafold as alf
 import matrix_tree as mx
 import maxCluster as max
-
+import os
 #import pre_traitement_pdb as ppdb
 ##################################################################
 def famille():
@@ -23,11 +23,9 @@ def famille():
     return family_names
 
 ##################################################################
-# def order_pdb():
-#     print('Traitement des fichiers PDB ..............................')
-#     import pre_traitement_pdb as ppdb
-#     ppdb()
-
+folder = '/home/guest/Documents/Cornelia/cds_project'
+if not os.path.exists(folder):
+    os.makedirs(folder)
 def download_pdb(family) :
     pdb_info_db = db.info_parser_pdb(family)
     pdb_accessions_list = pdb_info_db[0]

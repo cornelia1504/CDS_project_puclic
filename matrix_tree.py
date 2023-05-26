@@ -89,9 +89,9 @@ def tableau_score(family):
 
         output_folder = f'/home/guest/Documents/Cornelia/cds_project/{family}/maxcluster/table_for_matrix_p_c_alf.txt'
         df.to_csv(f'{output_folder}', header=False, sep='\t', index=False)
-        # error_file = f'/home/guest/Documents/Cornelia/cds_project/{family}/maxcluster/'
-        # with open(error_file + "models_frgt.txt", "w") as output_file:
-        #     output_file.write('Les modèles ci-après on été écartés lors de la création de la matrice : ' + str(bad_model))
+        error_file = f'/home/guest/Documents/Cornelia/cds_project/{family}/maxcluster/'
+        with open(error_file + "models_frgt.txt", "w") as output_file:
+            output_file.write('Les modèles ci-après on été écartés lors de la création de la matrice : ' + str(bad_model))
 
         return df, bad_model
 

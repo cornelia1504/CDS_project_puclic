@@ -15,8 +15,8 @@ def Pisces(family):
     representants = [j[0:4] for j in pdb_ids if j in accession_numbers]
     print('Representants = ', representants)
     print(len(representants))
-    # representant_file = f'/home/guest/Documents/Cornelia/cds_project/{family}/maxcluster/'
-    # with open(representant_file + "representant.txt", "w") as output_file:
-    #     output_file.write('Les structures représentatives pour cette famille sont : ' + str(representants))
+    representant_file = f'/home/guest/Documents/Cornelia/cds_project/{family}/maxcluster/'
+    with open(representant_file + "representant.txt", "w") as output_file:
+        output_file.write('Les structures représentatives pour cette famille sont : ' + str(representants))
     return representants
 #Pisces('GH128')
