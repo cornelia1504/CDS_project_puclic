@@ -1,3 +1,11 @@
+# !/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on mai 2023
+
+@author: Mamitiana Mahitasoa
+
+"""
 import re
 import os
 import time
@@ -7,8 +15,9 @@ from xml.etree import ElementTree
 from urllib.parse import urlparse, parse_qs, urlencode
 import requests
 from requests.adapters import HTTPAdapter, Retry
-import csv
+import retrieve_db_info as db
 import pandas as pd
+import alphafold as alf
 
 POLLING_INTERVAL = 3
 API_URL = "https://rest.uniprot.org"
@@ -82,11 +91,9 @@ def combine_batches(all_results, batch_results, file_format):
 
 def get_id_mapping_results_link(job_id):
     url = f"{API_URL}/idmapping/details/{job_id}"
-    #https://rest.uniprot.org/idmapping/uniprotkb/results/stream/{job_id}?compressed=true&fields=accession%2Creviewed%2Cid%2Cprotein_name%2Cgene_names%2Corganism_name%2Clength%2Ccc_developmental_stage%2Ccc_induction%2Cft_chain%2Cxref_ccds%2Cxref_embl&format=tsv
-    #url = f"{API_URL}/idmapping/uniprotkb/results/stream/{job_id}?compressed=true&fields=accession%2Creviewed%2Cid%2Cprotein_name%2Cgene_names%2Corganism_name%2Clength%2Ccc_developmental_stage%2Ccc_induction%2Cft_chain%2Cxref_ccds%2Cxref_embl&format=list"
     request = session.get(url)
     check_response(request)
-    print('****', request.json())
+    #print('****', request.json())
     return request.json()["redirectURL"]
 
 
@@ -157,8 +164,6 @@ def get_id_mapping_results_search(url):
     print(m)
     #
     total = int(request.headers["x-total-results"])
-    #total = int(request.headers["X-UniProt-Release"])###
-
     print_progress_batches(0, size, total)
     for i, batch in enumerate(get_batch(request, file_format, compressed), 1):
         results = combine_batches(results, batch, file_format)
@@ -181,112 +186,332 @@ def get_id_mapping_results_stream(url):
     )
     return decode_results(request, file_format, compressed)
 
-with open('accession_numbers.txt') as f:
-    accession_numbers = f.read().strip().split('\n')
-    print(accession_numbers)
-    accession_numbers=  accession_numbers[1:3]
-    for i in accession_numbers :
-        id = i
-    ids = ",".join(accession_numbers)
-    print(ids)
+
+#######################################################################################
+def id_mapping_cazy_uniprot(family):
+    """mapping des accessions cazy contre uniprotKB """
+    print('*********Id_mapping UniprotKB************')
+    accession_numbers = db.accession_ncbi_join(family)
+
     job_id = submit_id_mapping(
-        from_db="UniProtKB_AC-ID", to_db="UniRef50", ids=[ids, "P12345"]
-    )
+        from_db="EMBL-GenBank-DDBJ_CDS", to_db="UniProtKB", ids=accession_numbers)
     if check_id_mapping_results_ready(job_id):
         link = get_id_mapping_results_link(job_id)
         print(link)
-        #link = f'{API_URL}/idmapping/uniprotkb/results/stream/{job_id}?compressed=true&fields=accession%2Creviewed%2Cid%2Cprotein_name%2Cgene_names%2Corganism_name%2Clength%2Ccc_developmental_stage%2Ccc_induction%2Cft_chain%2Cxref_ccds%2Cxref_embl&format=list'
-
         results = get_id_mapping_results_search(link)
-        # Equivalently using the stream endpoint which is more demanding
-        # on the API and so is less stable:
-        # results = get_id_mapping_results_stream(link)
-        ##results = get_id_mapping_results_stream(f"https://rest.uniprot.org/idmapping/uniprotkb/results/stream/{job_id}?compressed=true&fields=accession%2Creviewed%2Cid%2Cprotein_name%2Cgene_names%2Corganism_name%2Clength%2Ccc_developmental_stage%2Ccc_induction%2Cft_chain%2Cxref_ccds%2Cxref_embl&format=tsv")
-        ##results = get_id_mapping_results_search(f"https://rest.uniprot.org/idmapping/uniprotkb/results/stream/{job_id}?download=true&format=list")
-        #https://rest.uniprot.org/idmapping/uniprotkb/results/stream/{job_id}?download=true&format=list
-print(results)
+    ligne = results.__str__()
 
-with open('cluster_name_test.json', 'w') as f:
-    print(results, file=f)
-#####################
-with open('cluster_name_test.json', 'r') as f:
-    data = f.readlines()
-    data_json = json.dumps(data)
-    print(data)
-    print(data_json)
-with open('cluster_name_test_json.json', 'w') as f:
-    print(data_json, file=f)
-with open('cluster_name_test_json.json') as json_file:
-    jsondata = json.load(json_file)
-    print(jsondata)
-# #     print("Nom:", jsondata['from'][0])
-# #     print("Âge:", jsondata['id'][0])
-# #     print("Ville:", jsondata['name'][0])
-# # data_file = open('cluster_name_test_json.csv', 'w', newline='')
-# csv_writer = csv.writer(data_file)
-####################################################################
-import subprocess
+    # Extraction des informations souhaitées avec la méthode re.findall()
+    from_value = re.findall(r"'from': '([^']+)'", ligne)
+    primaryAccession = re.findall(r"'primaryAccession': '([^']+)'", ligne)
+    failedIds = re.findall(r"'failedIds': (\[[^\]]+\])", ligne)
+    #failedIds = re.findall(r"'failedIds': '([^']+)'", failedIds.__str__())
 
-# Chemin du fichier JSON à reformater
-json_file_path = "cluster_name_test_json.json"
+    # Création des dictionnaires avec les informations extraites
+    dico1 = {'from': from_value[0]} if from_value else {}
+    dico2 = {'primaryAccession': primaryAccession[0]} if primaryAccession else {}
+    dico3 = {'failedIds': failedIds[0]} if failedIds else {}
 
-# Commande jq pour reformater le fichier avec des indentations
-command = ["jq", ".", json_file_path]
+    #gestion des listes en dico
+    cazy_accessions = from_value
+    uniprot_accesions = primaryAccession
+    dico_accessions = dict(zip(uniprot_accesions, cazy_accessions))
 
-# Exécution de la commande jq en utilisant la bibliothèque subprocess
-result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # Affichage des dictionnaires créés
 
-# Vérification si la commande a échoué
-if result.returncode != 0:
-    print("La commande a échoué :", result.stderr)
-else:
-    # Récupération du fichier JSON reformatté
-    reformatted_json = result.stdout
+    # Création d'un dictionnaire avec les valeurs extraites pour ce groupe
+    group_dict = {'from': from_value, 'accession_uniprot': primaryAccession, 'failedIds': failedIds}
+    groups = []  # Liste pour stocker les groupes d'informations
+    # Ajout du dictionnaire à la liste des groupes
+    groups.append(group_dict)
+    #print('\n', groups)
+    return uniprot_accesions, cazy_accessions, dico_accessions
 
-    # Affichage du fichier JSON reformatté
-    print(reformatted_json)
+#######################################################################################
+def clustering_uniprot_uniref50(family):
+    """mapping des accessions cazy contre uniprotKB """
+    print('*********Id_mapping Uniref50************')
 
-# Chemin du nouveau fichier JSON
-new_json_file_path = "fichier_formate_test.json"
+    accession_numbers = id_mapping_cazy_uniprot(family)
+    accession_numbers = accession_numbers[0]
 
-# Ouverture du nouveau fichier en mode écriture
-with open(new_json_file_path, "w") as f:
-    # Écriture du fichier JSON reformatté dans le nouveau fichier
-    f.write(reformatted_json)
-##############################################################
+    job_id = submit_id_mapping(
+        from_db="UniProtKB_AC-ID", to_db="UniRef50", ids=accession_numbers)
+    if check_id_mapping_results_ready(job_id):
+        link = get_id_mapping_results_link(job_id)
+        print(link)
+        results = get_id_mapping_results_search(link)
 
-# Charger le fichier JSON reformatté
-with open('fichier_formate_test.json', 'r') as f:
-    data = json.load(f)
+    ligne = results.__str__()
+    # Extraction des informations souhaitées avec la méthode re.findall()
+    id_value = re.findall(r"'id': '([^']+)'", ligne)
+    from_value = re.findall(r"'from': '([^']+)'", ligne)
+    members_value = re.findall(r"'members': (\[[^\]]+\])", ligne)
+    failedIds = re.findall(r"'failedIds': (\[[^\]]+\])", ligne)
 
-# Créer un DataFrame pandas à partir du fichier JSON
-df = pd.json_normalize(data)
-print('*************')
-print(df.columns)
-# Sélectionner les colonnes que vous souhaitez inclure dans le fichier CSV
-selected_cols = ['id', 'from', 'name']
+    # gestion des listes en dico
+    uniprot_accesions = from_value
+    uniref50_cluster = id_value
+    dico_cluster50 = dict(zip(uniprot_accesions,uniref50_cluster))
 
-# Écrire le DataFrame pandas dans un fichier CSV
-df[selected_cols].to_csv('nouveau_fichier.csv', index=False)
-##############################################################
+    # Affichage des dictionnaires créés
+    df = pd.DataFrame({'cluster50': list(dico_cluster50.values()), 'accession': list(dico_cluster50.keys())})
+    grouped = df.groupby('cluster50')['accession'].apply(list)
+    new_df = grouped.reset_index()
 
-# df = pd.read_json (r'cluster_name_test_json.json')
-# df.to_csv (r'cluster_name_test_json.csv', index= None)
-# print(df)
-# df = pd.read_json (r'cluster_name_test.json')
-# df.to_csv (r'cluster_name_test.txt.csv')
-#####################
+    return grouped, new_df, dico_cluster50
 
+#alfafold
+def search_accession_alf_50(family):
+    results = clustering_uniprot_uniref50(family)
+    uniprot_accesions = results[0]
+    uniref50_cluster = results[1]
+    new_df = results[1]
 
+    #ids_for_alph():
+    code_alf = []
+    code_alf_dwl = []
+    cluster_files_list = []
+    for key in new_df['cluster50']:
+        accession = key.split('_')[1]
+        if len(accession) == 6:
+            #print(accession, 'valable')
+            code_alf.append(accession)
+            continue
+        if len(accession) != 6:
+            #print(accession, 'non valable')
+            code_alf_dwl.append(accession)
+            cluster = key
+            # file = f'{key}_cluster50.list'
+            # print(file)
+            file = f'{accession}_cluster50.list'
+            #print(file)
+            directory = f'/home/guest/Documents/Cornelia/cds_project/{family}/list_accession_clt50'
+            if not os.path.exists(directory):
+                os.mkdir(directory)
+            file = f'/home/guest/Documents/Cornelia/cds_project/{family}/list_accession_clt50/{file}'
+            os.system(f'wget -q -O {file} https://rest.uniprot.org/uniref/{cluster}/members?format=list&size=500 > {file}')
+            if os.path.isfile(file):
+                #print(f"Le fichier {file} a été téléchargé avec succès.")
+                cluster_files_list.append(file)
+            else:
+                print(f"Une erreur est survenue lors du téléchargement de {file}.")
 
-def get_data_frame_from_tsv_results(tsv_results):
-    reader = csv.DictReader(tsv_results, delimiter="\t", quotechar='"')
-    return pd.DataFrame(list(reader))
-seuil = 50
-output_folder = f'/home/guest/Documents/Cornelia/cds_project/GH62/PDB_GH62/cluster{seuil}_name'
-if not os.path.exists(output_folder):
-    os.makedirs(output_folder)
-output_file = "cluster_test.tsv"
-tsv = get_id_mapping_results_stream(f"https://rest.uniprot.org/idmapping/uniprotkb/results/stream/{job_id}?compressed=true&fields=accession%2Creviewed%2Cid%2Cprotein_name%2Cgene_names%2Corganism_name%2Clength%2Ccc_developmental_stage%2Ccc_induction%2Cft_chain%2Cxref_ccds%2Cxref_embl&format=tsv")
-with open('cluster_test.tsv', 'w') as f:
-    print(tsv, file=f)
+    print('Nomnbre d`accessions avec un modèle alphaFold disponible : ',len(code_alf))
+    print('Nomnbre d`accessions avec un modèle alphaFold non disponible : ',len(code_alf_dwl))
+    #print(cluster_files_list)
+    #download pdb filees
+    print('\n ***************** download ******************* \n')
+    output_folder = f'/home/guest/Documents/Cornelia/cds_project/{family}/modeles_alph_clt'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    for accession in code_alf:
+        output_file = os.path.join(output_folder, f"{accession}_al.pdb")
+        os.system(f'wget -O {output_file} https://alphafold.ebi.ac.uk/files/AF-{accession}-F1-model_v4.pdb')
+        #https://alphafold.ebi.ac.uk/files/AF-F4HVG8-F1-model_v4.pdb
+
+    return cluster_files_list, code_alf, code_alf_dwl
+#15 mai
+def retrieve_alf(family):
+    all_accession_alf = []
+    no_alf_acs = []
+    directory = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/list_accession_cluster50'
+    directory = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/list_accession_clt50'#
+
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+    file_names = os.listdir(f'{directory}')
+    dico_accession_alf = {}
+    for name in file_names:
+        file = f'{directory}/{name}'
+        print('file : ', file)
+        with open(f'{file}', 'r') as f:
+            accession_alf_list = []
+            for line in f.readlines():
+                print('****line**** ', line)
+                print('ligne : ', line)
+                pattern = r"\b\w{6}(?=_)"
+                regex = re.compile(pattern)
+                result = regex.findall(line)
+                print(result)
+                if result:
+                    dico_accession_alf[name[0:9]] = result[0]
+                    accession_alf_list.append(result[0])
+                    break  # sortir de la boucle dès qu'on trouve l'accession à 6 caractères
+            if accession_alf_list:
+                premier_element = accession_alf_list[0]
+            else:
+                print("La liste est vide !")
+                premier_element = None
+                no_alf_acs.append(name[0:10])
+            if premier_element != None:
+                all_accession_alf.append(premier_element)
+    print('dico : ', dico_accession_alf)
+    print('liste finale : ',all_accession_alf)
+    print('********', len(all_accession_alf))
+    print('\n ******************** \n')
+    print('********', len(no_alf_acs))
+
+    return dico_accession_alf, all_accession_alf
+def download_models(family):
+    """function to retrieve alphafold modeles pdb files of a list of accession"""
+    global output_folder
+    output_folder = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/modeles_alf_clt'
+    #/home/guest/Documents/Cornelia/cds_project/GH62/clean_info_GH62
+    #output_folder = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/modeles_alph'
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    # accession_search = retrieve_alf(family)
+    # dico_accessions = accession_search[0]
+    search_accession = search_accession_alf_50(family)
+    code_alf = search_accession[1]
+    code_alf_dwl = search_accession[2]
+    print('**************************** \n')
+    retieve = alf.retrieve_alf(family)
+    all_accession_alf = retieve[1]
+    dwl_accessions = code_alf.__str__() + all_accession_alf.__str__()
+    print('\n **** code_alf accessions : ', code_alf)
+    print(len(code_alf))
+    print('\n **** all accessions : ', all_accession_alf)
+    print(len(all_accession_alf))
+    print('\n **** dwl accessions : ', dwl_accessions)
+    print(len(dwl_accessions))
+
+def map_acc_org(family):
+    result = db.organisme(family)
+    dico_org = result[0]
+    results = clustering_uniprot_uniref50(family)
+    uniprot_accesions = results[0]
+    uniref50_cluster = results[1]
+    new_df = results[1]
+    print(new_df)
+
+#######################################################################################
+def id_mapping_uniprot_uniref50(family):
+    """mapping des accessions cazy contre uniprotKB """
+    print('*********Id_mapping Uniref50************')
+
+    accession_numbers = id_mapping_cazy_uniprot(family)
+    accession_numbers = accession_numbers[0]
+
+    job_id = submit_id_mapping(
+        from_db="UniProtKB_AC-ID", to_db="UniRef50", ids=accession_numbers)
+    if check_id_mapping_results_ready(job_id):
+        link = get_id_mapping_results_link(job_id)
+        print(link)
+        results = get_id_mapping_results_search(link)
+    #print('Analyse : ',results)
+    ligne = results.__str__()
+
+    # Extraction des informations souhaitées avec la méthode re.findall()
+    id_value = re.findall(r"'id': '([^']+)'", ligne)
+    from_value = re.findall(r"'from': '([^']+)'", ligne)
+    members_value = re.findall(r"'members': (\[[^\]]+\])", ligne)
+    failedIds = re.findall(r"'failedIds': (\[[^\]]+\])", ligne)
+
+    # Création des dictionnaires avec les informations extraites
+    dico1 = {'cluster_50': id_value[0]} if id_value else {}
+    dico2 = {'from': from_value[0]} if from_value else {}
+    dico3 = {'members': members_value[0]} if members_value else {}
+    dico4 = {'failedIds': failedIds[0]} if failedIds else {}
+
+    # gestion des listes en dico
+    uniprot_accesions = from_value
+    uniref50_cluster = id_value
+    dico_cluster50 = dict(zip(uniprot_accesions,uniref50_cluster))
+
+    # Affichage des dictionnaires créés
+    # print(dico1)
+    print(uniref50_cluster)
+    print(uniprot_accesions)
+    print(dico_cluster50)
+    # Création d'un dictionnaire avec les valeurs extraites pour ce groupe
+    group_dict = {'uniprot_accesions': from_value, 'uniref50_cluster': id_value, 'failedIds': failedIds}
+    groups = []  # Liste pour stocker les groupes d'informations
+    # Ajout du dictionnaire à la liste des groupes
+    groups.append(group_dict)
+    print('\n', groups)
+    return uniprot_accesions, uniref50_cluster, dico_cluster50
+
+#######################################################################################
+#https://rest.uniprot.org/uniref/UniRef50_P96463/members?format=list&size=500
+#https://rest.uniprot.org/uniref/UniRef50_P96463/members?format=list&size=500
+###########################################################
+def search_accession_alf(family):
+    results = id_mapping_uniprot_uniref50(family)
+    uniprot_accesions = results[0]
+    uniref50_cluster = results[1]
+    dico_accessions = results[2]
+    print(dico_accessions)
+    #ids_for_alph():
+    code_alf = []
+    code_alf_dwl = []
+    cluster_files_list = []
+    for key in dico_accessions.keys():
+        if len(key.strip()) == 6:
+            print(key, 'valable')
+            code_alf.append(key)
+            continue
+        if len(key.strip()) != 6:
+            print(key, 'non valable')
+            code_alf_dwl.append(key)
+            cluster = dico_accessions[key]
+            # file = f'{key}_cluster50.list'
+            # print(file)
+            file = f'{key}_cluster50.list'
+            #print(file)
+            file = f'/home/guest/Documents/Cornelia/cds_project/{family}/clean_info_{family}/list_accession_clt50/{file}'
+            print('*************************')
+            os.system(f'wget -q -O {file} https://rest.uniprot.org/uniref/{cluster}/members?format=list&size=500 > {file}')
+            if os.path.isfile(file):
+                print(f"Le fichier {file} a été téléchargé avec succès.")
+                cluster_files_list.append(file)
+            else:
+                print(f"Une erreur est survenue lors du téléchargement de {file}.")
+    print('Nomnbre d`accessions avec un modèle alphaFold disponible : ',len(code_alf))
+    print('Nomnbre d`accessions avec un modèle alphaFold non disponible : ',len(code_alf_dwl))
+    print(cluster_files_list)
+    return cluster_files_list
+
+def for_alf(family):
+    test = search_accession_alf(family)
+    return test
+#######################################################################################
+
+def parser():
+    with open('cluster_name_test_json.json', 'r') as f:
+        ligne = f.read()
+
+        # Extraction des informations souhaitées avec la méthode re.findall()
+        id_value = re.findall(r"'id': '([^']+)'", ligne)
+        from_value = re.findall(r"'from': '([^']+)'", ligne)
+        members_value = re.findall(r"'members': (\[[^\]]+\])", ligne)
+
+        # Création des dictionnaires avec les informations extraites
+        dico1 = {'cluster_50': id_value[0]} if id_value else {}
+        dico2 = {'from': from_value[0]} if from_value else {}
+        dico3 = {'members': members_value[0]} if members_value else {}
+
+        # Affichage des dictionnaires créés
+        print(dico1)
+        print(dico2)
+        print(dico3)
+
+        # Création d'un dictionnaire avec les valeurs extraites pour ce groupe
+        group_dict = {'id': id_value, 'from': from_value, 'members': members_value}
+        groups = []  # Liste pour stocker les groupes d'informations
+        # Ajout du dictionnaire à la liste des groupes
+        groups.append(group_dict)
+        print('\n', groups)
+
+if __name__ == '__main__':
+    family = input('family g : ')
+    #id_mapping_uniprot_uniref50(family)
+    #clustering_uniprot_uniref50(family)
+    search_accession_alf_50(family) #
+    #retrieve_alf(family)
+    #download_models(family)
+    #search_accession_alf(family)
+    #map_acc_org(family)
+    print('\n **********************')
+    #for_alf(family)
